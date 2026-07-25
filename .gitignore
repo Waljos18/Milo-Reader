@@ -1,0 +1,17 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+
+# Claude / Cursor local
+.claude/
+CLAUDE.md
+claude.md
+.cursor/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
