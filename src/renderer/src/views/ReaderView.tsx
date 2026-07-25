@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import ePub, { type Contents, type Location as EpubLocation, type Rendition } from 'epubjs'
+import ePub, {
+  type Contents,
+  type Location as EpubLocation,
+  type NavItem,
+  type Rendition
+} from 'epubjs'
 import {
   GlobalWorkerOptions,
   getDocument,
@@ -34,6 +39,122 @@ const INK_THRESHOLD = 246
 const CROP_PADDING_RATIO = 0.015
 const NO_CROP: CropBox = { top: 0, bottom: 1, left: 0, right: 1 }
 const HIGHLIGHT_COLORS = ['#facc15', '#4ade80', '#60a5fa', '#f472b6']
+const SEARCH_MIN_LENGTH = 2
+const SEARCH_RESULT_LIMIT = 200
+const SEARCH_EXCERPT_RADIUS = 60
+
+interface SearchHit {
+  id: string
+  excerpt: string
+  /** CFI para EPUB, numero de pagina (string) para PDF */
+  target: string
+}
+
+interface EpubSearchMatch {
+  cfi: string
+  excerpt: string
+}
+
+/** Section de epubjs: los tipos oficiales no incluyen `search`/`spineItems`, epubjs 0.3.93 si los tiene en runtime. */
+interface EpubSearchableSection {
+  href?: string
+  load(request: (url: string) => Promise<unknown>): Promise<unknown>
+  unload(): void
+  search?(query: string): EpubSearchMatch[]
+  find(query: string): EpubSearchMatch[]
+}
+
+async function searchEpub(
+  rendition: Rendition,
+  query: string,
+  token: number,
+  tokenRef: { current: number },
+  onUpdate: (hits: SearchHit[]) => void
+): Promise<void> {
+  const book = rendition.book as unknown as {
+    load: (url: string) => Promise<unknown>
+    spine: { spineItems: EpubSearchableSection[] }
+  }
+  const results: SearchHit[] = []
+  for (const section of book.spine.spineItems) {
+    if (tokenRef.current !== token) return
+    try {
+      await section.load(book.load.bind(book))
+      const matches = section.search ? section.search(query) : section.find(query)
+      section.unload()
+      for (const match of matches) {
+        results.push({
+          id: match.cfi,
+          excerpt: match.excerpt.replace(/\s+/g, ' ').trim(),
+          target: match.cfi
+        })
+        if (results.length >= SEARCH_RESULT_LIMIT) break
+      }
+    } catch {
+      // seccion no cargable (recurso externo, etc.), continuar con la siguiente
+    }
+    onUpdate([...results])
+    if (results.length >= SEARCH_RESULT_LIMIT) return
+  }
+}
+
+async function searchPdf(
+  doc: PDFDocumentProxy,
+  query: string,
+  token: number,
+  tokenRef: { current: number },
+  onUpdate: (hits: SearchHit[]) => void
+): Promise<void> {
+  const needle = query.toLowerCase()
+  const results: SearchHit[] = []
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    if (tokenRef.current !== token) return
+    const page = await doc.getPage(pageNum)
+    const content = await page.getTextContent()
+    const text = content.items.map((item) => ('str' in item ? item.str : '')).join(' ')
+    const lower = text.toLowerCase()
+
+    let idx = lower.indexOf(needle)
+    while (idx !== -1 && results.length < SEARCH_RESULT_LIMIT) {
+      const start = Math.max(0, idx - SEARCH_EXCERPT_RADIUS)
+      const end = Math.min(text.length, idx + needle.length + SEARCH_EXCERPT_RADIUS)
+      const excerpt = `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${
+        end < text.length ? '…' : ''
+      }`
+      results.push({ id: `${pageNum}-${idx}`, excerpt, target: String(pageNum) })
+      idx = lower.indexOf(needle, idx + needle.length)
+    }
+    onUpdate([...results])
+    if (results.length >= SEARCH_RESULT_LIMIT) return
+  }
+}
+
+function TocList({
+  items,
+  onNavigate
+}: {
+  items: NavItem[]
+  onNavigate: (href: string) => void
+}): React.JSX.Element {
+  return (
+    <ul className="flex flex-col gap-0.5 pl-2 first:pl-0">
+      {items.map((item) => (
+        <li key={item.id}>
+          <button
+            onClick={() => onNavigate(item.href)}
+            title={item.label.trim()}
+            className="w-full truncate rounded-md px-2 py-1 text-left text-sm hover:bg-[var(--color-bg-mute)]"
+          >
+            {item.label.trim()}
+          </button>
+          {item.subitems && item.subitems.length > 0 && (
+            <TocList items={item.subitems} onNavigate={onNavigate} />
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 function parsePdfLocation(location: string): PdfHighlightLocation | null {
   try {
@@ -136,7 +257,12 @@ export default function ReaderView(): React.JSX.Element {
   const [selectedHighlight, setSelectedHighlight] = useState<AnnotationEntry | null>(null)
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
-  const [showBookmarks, setShowBookmarks] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState<'toc' | 'search' | 'bookmarks' | null>(null)
+  const [toc, setToc] = useState<NavItem[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const searchTokenRef = useRef(0)
   const currentLocationRef = useRef<string | null>(null)
   const { recordLocation } = useReadingSession(bookId)
   const tts = useTts()
@@ -241,7 +367,12 @@ export default function ReaderView(): React.JSX.Element {
         setBook(meta)
         setHighlights([])
         setBookmarks([])
-        setShowBookmarks(false)
+        setSidebarTab(null)
+        setToc([])
+        setSearchQuery('')
+        setSearchResults([])
+        setSearching(false)
+        searchTokenRef.current++
         setPendingSelection(null)
         setSelectedHighlight(null)
         currentLocationRef.current = null
@@ -268,6 +399,10 @@ export default function ReaderView(): React.JSX.Element {
             a: { color: '#60a5fa !important' }
           })
           rendition.themes.select(isReaderDark ? 'dark' : 'default')
+
+          epub.loaded.navigation.then((nav) => {
+            if (!cancelled) setToc(nav.toc)
+          })
 
           const progress = await window.api.getProgress(bookId!)
           setPercent(progress?.percentComplete ?? 0)
@@ -468,7 +603,41 @@ export default function ReaderView(): React.JSX.Element {
     const label = isPdf ? `Página ${pageNum}` : `${displayPercent}%`
     const bookmark = await window.api.addBookmark({ bookId, location, label })
     setBookmarks((prev) => [...prev, bookmark])
-    setShowBookmarks(true)
+    setSidebarTab('bookmarks')
+  }
+
+  function toggleSidebar(tab: 'toc' | 'search' | 'bookmarks'): void {
+    setSidebarTab((current) => (current === tab ? null : tab))
+  }
+
+  async function runSearch(): Promise<void> {
+    const query = searchQuery.trim()
+    setSearchResults([])
+    if (query.length < SEARCH_MIN_LENGTH) return
+
+    const token = ++searchTokenRef.current
+    setSearching(true)
+    try {
+      if (isPdf && pdfDocRef.current) {
+        await searchPdf(pdfDocRef.current, query, token, searchTokenRef, setSearchResults)
+      } else if (!isPdf && renditionRef.current) {
+        await searchEpub(renditionRef.current, query, token, searchTokenRef, setSearchResults)
+      }
+    } finally {
+      if (searchTokenRef.current === token) setSearching(false)
+    }
+  }
+
+  function goToSearchHit(hit: SearchHit): void {
+    setPendingSelection(null)
+    setSelectedHighlight(null)
+    if (isPdf) {
+      const page = parseInt(hit.target, 10)
+      if (Number.isFinite(page)) setPageNum(Math.min(Math.max(page, 1), numPages || page))
+    } else {
+      currentLocationRef.current = hit.target
+      renditionRef.current?.display(hit.target)
+    }
   }
 
   async function removeBookmark(bookmarkId: string): Promise<void> {
@@ -700,6 +869,24 @@ export default function ReaderView(): React.JSX.Element {
               {tts.rate}x
             </button>
             <button
+              onClick={() => toggleSidebar('toc')}
+              title="Índice / páginas"
+              className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
+                sidebarTab === 'toc' ? 'bg-[var(--color-bg-mute)]' : ''
+              }`}
+            >
+              Índice
+            </button>
+            <button
+              onClick={() => toggleSidebar('search')}
+              title="Buscar en el libro"
+              className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
+                sidebarTab === 'search' ? 'bg-[var(--color-bg-mute)]' : ''
+              }`}
+            >
+              Buscar
+            </button>
+            <button
               onClick={addCurrentBookmark}
               title="Añadir marcador aquí"
               className="rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)]"
@@ -718,19 +905,17 @@ export default function ReaderView(): React.JSX.Element {
               </svg>
             </button>
             <button
-              onClick={() => setShowBookmarks((open) => !open)}
+              onClick={() => toggleSidebar('bookmarks')}
               title="Ver marcadores"
               className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
-                showBookmarks ? 'bg-[var(--color-bg-mute)]' : ''
+                sidebarTab === 'bookmarks' ? 'bg-[var(--color-bg-mute)]' : ''
               }`}
             >
               Marcadores{bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}
             </button>
             <button
               onClick={toggleReaderTheme}
-              title={
-                isReaderDark ? 'Páginas en modo claro' : 'Páginas en modo oscuro'
-              }
+              title={isReaderDark ? 'Páginas en modo claro' : 'Páginas en modo oscuro'}
               className="rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)]"
             >
               {isReaderDark ? (
@@ -852,47 +1037,137 @@ export default function ReaderView(): React.JSX.Element {
           </div>
         </div>
 
-        {showBookmarks && (
-          <aside className="ml-3 flex w-64 shrink-0 flex-col rounded border border-[var(--color-border)] bg-[var(--color-bg-soft)]">
+        {sidebarTab && (
+          <aside className="ml-3 flex w-72 shrink-0 flex-col rounded border border-[var(--color-border)] bg-[var(--color-bg-soft)]">
             <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-              <h3 className="text-sm font-medium">Marcadores</h3>
+              <h3 className="text-sm font-medium">
+                {sidebarTab === 'toc'
+                  ? 'Índice'
+                  : sidebarTab === 'search'
+                    ? 'Buscar'
+                    : 'Marcadores'}
+              </h3>
               <button
-                onClick={() => setShowBookmarks(false)}
+                onClick={() => setSidebarTab(null)}
                 className="rounded px-1.5 py-0.5 text-xs text-[var(--color-text-soft)] hover:bg-[var(--color-bg-mute)]"
               >
                 Cerrar
               </button>
             </div>
+
             <div className="min-h-0 flex-1 overflow-auto p-2">
-              {bookmarks.length === 0 ? (
-                <p className="px-1 py-2 text-xs text-[var(--color-text-soft)]">
-                  Aún no hay marcadores. Usa el icono de marcador para guardar la posición actual.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {bookmarks.map((bookmark) => (
-                    <li
-                      key={bookmark.id}
-                      className="flex items-center gap-1 rounded-md hover:bg-[var(--color-bg-mute)]"
+              {sidebarTab === 'toc' &&
+                (isPdf ? (
+                  numPages > 0 ? (
+                    <div className="grid grid-cols-5 gap-1">
+                      {Array.from({ length: numPages }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setPageNum(p)}
+                          className={`rounded-md border px-2 py-1 text-xs ${
+                            p === pageNum
+                              ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                              : 'border-[var(--color-border)] hover:bg-[var(--color-bg-mute)]'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="px-1 py-2 text-xs text-[var(--color-text-soft)]">
+                      Cargando páginas…
+                    </p>
+                  )
+                ) : toc.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-[var(--color-text-soft)]">
+                    Este libro no tiene índice.
+                  </p>
+                ) : (
+                  <TocList
+                    items={toc}
+                    onNavigate={(href) => {
+                      currentLocationRef.current = href
+                      renditionRef.current?.display(href)
+                    }}
+                  />
+                ))}
+
+              {sidebarTab === 'search' && (
+                <div className="flex h-full flex-col gap-2">
+                  <div className="flex gap-1">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') runSearch()
+                      }}
+                      placeholder="Buscar palabra..."
+                      className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-sm"
+                    />
+                    <button
+                      onClick={runSearch}
+                      className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm hover:bg-[var(--color-bg-mute)]"
                     >
-                      <button
-                        onClick={() => goToBookmark(bookmark)}
-                        className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm"
-                        title={bookmarkLabel(bookmark)}
-                      >
-                        {bookmarkLabel(bookmark)}
-                      </button>
-                      <button
-                        onClick={() => removeBookmark(bookmark.id)}
-                        title="Eliminar marcador"
-                        className="shrink-0 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                      Ir
+                    </button>
+                  </div>
+
+                  {searching && (
+                    <p className="px-1 text-xs text-[var(--color-text-soft)]">Buscando…</p>
+                  )}
+                  {!searching &&
+                    searchQuery.trim().length >= SEARCH_MIN_LENGTH &&
+                    searchResults.length === 0 && (
+                      <p className="px-1 text-xs text-[var(--color-text-soft)]">Sin resultados.</p>
+                    )}
+
+                  <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-auto">
+                    {searchResults.map((hit) => (
+                      <li key={hit.id}>
+                        <button
+                          onClick={() => goToSearchHit(hit)}
+                          className="w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--color-bg-mute)]"
+                        >
+                          {isPdf && <span className="font-medium">Pág. {hit.target}: </span>}
+                          {hit.excerpt}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
+
+              {sidebarTab === 'bookmarks' &&
+                (bookmarks.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-[var(--color-text-soft)]">
+                    Aún no hay marcadores. Usa el icono de marcador para guardar la posición actual.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-1">
+                    {bookmarks.map((bookmark) => (
+                      <li
+                        key={bookmark.id}
+                        className="flex items-center gap-1 rounded-md hover:bg-[var(--color-bg-mute)]"
+                      >
+                        <button
+                          onClick={() => goToBookmark(bookmark)}
+                          className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm"
+                          title={bookmarkLabel(bookmark)}
+                        >
+                          {bookmarkLabel(bookmark)}
+                        </button>
+                        <button
+                          onClick={() => removeBookmark(bookmark.id)}
+                          title="Eliminar marcador"
+                          className="shrink-0 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ))}
             </div>
           </aside>
         )}
