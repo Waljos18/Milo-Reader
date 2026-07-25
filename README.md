@@ -37,10 +37,12 @@ src/
 ## Estado actual
 
 Funcional: elegir carpeta de biblioteca, agregar libros (EPUB/PDF), listarlos con portadas,
-lector EPUB/PDF, progreso, subrayados/notas, marcadores, tema claro/oscuro/sistema.
+lector EPUB/PDF, progreso, subrayados/notas, marcadores, tema de interfaz (claro/oscuro/sistema)
+separado del tema de lectura (claro/oscuro), texto a voz (TTS vía Web Speech API) y estadísticas
+de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
 
-Pendiente (siguientes pasos): TTS, diccionario/traducción, estadísticas de lectura, catálogo
-de libros gratuitos (Gutendex), tipografía del lector, metadata real de libros.
+Pendiente (siguientes pasos): diccionario/traducción, catálogo de libros gratuitos (Gutendex),
+tipografía del lector, metadata real de libros.
 
 ## Desarrollo
 
