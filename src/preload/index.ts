@@ -28,7 +28,9 @@ const api = {
   getReadingStats: () => ipcRenderer.invoke('stats:get'),
   saveCover: (bookId: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('library:saveCover', bookId, bytes),
-  getCoverFile: (bookId: string) => ipcRenderer.invoke('library:getCoverFile', bookId)
+  getCoverFile: (bookId: string) => ipcRenderer.invoke('library:getCoverFile', bookId),
+  translateText: (text: string) => ipcRenderer.invoke('translation:translate', text),
+  lookupWord: (word: string) => ipcRenderer.invoke('dictionary:lookup', word)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

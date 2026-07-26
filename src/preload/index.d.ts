@@ -3,6 +3,7 @@ import type {
   AnnotationEntry,
   Bookmark,
   BookWithProgress,
+  DictionaryResult,
   GlobalAnnotationEntry,
   Highlight,
   NewAnnotationInput,
@@ -10,7 +11,8 @@ import type {
   Note,
   ReadingProgress,
   ReadingSession,
-  ReadingStatsSummary
+  ReadingStatsSummary,
+  TranslationResult
 } from '../shared/types'
 
 export interface MiloReaderApi {
@@ -36,6 +38,8 @@ export interface MiloReaderApi {
   getReadingStats: () => Promise<ReadingStatsSummary>
   saveCover: (bookId: string, bytes: Uint8Array) => Promise<void>
   getCoverFile: (bookId: string) => Promise<Uint8Array | null>
+  translateText: (text: string) => Promise<TranslationResult>
+  lookupWord: (word: string) => Promise<DictionaryResult>
 }
 
 declare global {

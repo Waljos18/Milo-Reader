@@ -4,6 +4,12 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers } from './ipc/handlers'
 
+// Con escalado de Windows fraccionario (125%, 150%) el hit-test de Chromium sobre texto se
+// desalinea del layout visual, haciendo que doble-clic/arrastre seleccione la palabra de al lado
+// en vez de la tocada (afecta por igual al text layer del PDF y al iframe nativo del EPUB, ya que
+// ambos dependen del mismo motor). Forzar un factor entero elimina ese redondeo fraccionario.
+app.commandLine.appendSwitch('force-device-scale-factor', '1')
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1100,

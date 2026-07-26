@@ -20,6 +20,7 @@ import type {
   AnnotationEntry,
   Bookmark,
   BookWithProgress,
+  DictionaryResult,
   PdfHighlightLocation
 } from '@shared/types'
 import { useReadingSession } from '@renderer/hooks/useReadingSession'
@@ -236,6 +237,7 @@ export default function ReaderView(): React.JSX.Element {
   const textLayerInstanceRef = useRef<TextLayer | null>(null)
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null)
   const renderTaskRef = useRef<RenderTask | null>(null)
+  const renderGenerationRef = useRef(0)
   const cropBoxCacheRef = useRef<Map<number, CropBox>>(new Map())
 
   const [book, setBook] = useState<BookWithProgress | null>(null)
@@ -254,6 +256,16 @@ export default function ReaderView(): React.JSX.Element {
   } | null>(null)
   const [pendingColor, setPendingColor] = useState(HIGHLIGHT_COLORS[0])
   const [pendingNote, setPendingNote] = useState('')
+  const [translation, setTranslation] = useState<{
+    loading: boolean
+    text: string | null
+    error: string | null
+  } | null>(null)
+  const [dictionary, setDictionary] = useState<{
+    loading: boolean
+    result: DictionaryResult | null
+    error: string | null
+  } | null>(null)
   const [selectedHighlight, setSelectedHighlight] = useState<AnnotationEntry | null>(null)
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null)
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
@@ -292,11 +304,15 @@ export default function ReaderView(): React.JSX.Element {
       const container = pdfContainerRef.current
       if (!doc || !canvas || !container) return
 
+      const generation = ++renderGenerationRef.current
+
       const pdfPage = await doc.getPage(page)
+      if (generation !== renderGenerationRef.current) return
 
       let cropBox = cropBoxCacheRef.current.get(page)
       if (!cropBox) {
         cropBox = await detectCropBox(pdfPage)
+        if (generation !== renderGenerationRef.current) return
         cropBoxCacheRef.current.set(page, cropBox)
       }
 
@@ -320,6 +336,7 @@ export default function ReaderView(): React.JSX.Element {
         const isCancel = err instanceof Error && err.name === 'RenderingCancelledException'
         if (!isCancel) throw err
       }
+      if (generation !== renderGenerationRef.current) return
 
       const sx = Math.round(cropBox.left * fullCanvas.width)
       const sy = Math.round(cropBox.top * fullCanvas.height)
@@ -338,6 +355,7 @@ export default function ReaderView(): React.JSX.Element {
         textLayerContainer.replaceChildren()
         textLayerContainer.style.setProperty('--total-scale-factor', String(viewport.scale))
         const textContent = await pdfPage.getTextContent()
+        if (generation !== renderGenerationRef.current) return
         const textLayer = new TextLayer({
           textContentSource: textContent,
           container: textLayerContainer,
@@ -349,6 +367,7 @@ export default function ReaderView(): React.JSX.Element {
         } catch {
           // cancelado por un render mas nuevo, ignorar
         }
+        if (generation !== renderGenerationRef.current) return
         textLayerContainer.style.left = `-${sx}px`
         textLayerContainer.style.top = `-${sy}px`
       }
@@ -433,6 +452,8 @@ export default function ReaderView(): React.JSX.Element {
             setSelectedHighlight(null)
             setPendingColor(HIGHLIGHT_COLORS[0])
             setPendingNote('')
+            setTranslation(null)
+            setDictionary(null)
             setPendingSelection({ text, location: cfiRange, clientX, clientY })
           })
 
@@ -525,6 +546,8 @@ export default function ReaderView(): React.JSX.Element {
         setSelectedHighlight(null)
         setPendingColor(HIGHLIGHT_COLORS[0])
         setPendingNote('')
+        setTranslation(null)
+        setDictionary(null)
         setPendingSelection({
           text,
           location: JSON.stringify(location),
@@ -564,6 +587,36 @@ export default function ReaderView(): React.JSX.Element {
       'epub-highlight',
       { fill: entry.highlight.color, 'fill-opacity': '0.35' }
     )
+  }
+
+  async function lookupWordDefinition(): Promise<void> {
+    if (!pendingSelection) return
+    setDictionary({ loading: true, result: null, error: null })
+    try {
+      const result = await window.api.lookupWord(pendingSelection.text)
+      setDictionary({ loading: false, result, error: null })
+    } catch (err) {
+      setDictionary({
+        loading: false,
+        result: null,
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
+  }
+
+  async function translateSelection(): Promise<void> {
+    if (!pendingSelection) return
+    setTranslation({ loading: true, text: null, error: null })
+    try {
+      const result = await window.api.translateText(pendingSelection.text)
+      setTranslation({ loading: false, text: result.translatedText, error: null })
+    } catch (err) {
+      setTranslation({
+        loading: false,
+        text: null,
+        error: err instanceof Error ? err.message : String(err)
+      })
+    }
   }
 
   async function saveHighlight(): Promise<void> {
@@ -1198,20 +1251,75 @@ export default function ReaderView(): React.JSX.Element {
             rows={2}
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-1.5 text-xs"
           />
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setPendingSelection(null)}
-              className="rounded-md px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={saveHighlight}
-              className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs text-white"
-            >
-              Guardar
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={translateSelection}
+                disabled={translation?.loading}
+                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+              >
+                Traducir
+              </button>
+              {/^[\p{L}'-]+$/u.test(pendingSelection.text) && (
+                <button
+                  onClick={lookupWordDefinition}
+                  disabled={dictionary?.loading}
+                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+                >
+                  Definición
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingSelection(null)}
+                className="rounded-md px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveHighlight}
+                className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs text-white"
+              >
+                Guardar
+              </button>
+            </div>
           </div>
+
+          {translation?.loading && (
+            <p className="text-xs text-[var(--color-text-soft)]">Traduciendo…</p>
+          )}
+          {translation?.error && <p className="text-xs text-red-500">{translation.error}</p>}
+          {translation?.text && (
+            <p className="rounded-md bg-[var(--color-bg-mute)] p-1.5 text-xs">{translation.text}</p>
+          )}
+
+          {dictionary?.loading && (
+            <p className="text-xs text-[var(--color-text-soft)]">Buscando definición…</p>
+          )}
+          {dictionary?.error && <p className="text-xs text-red-500">{dictionary.error}</p>}
+          {dictionary?.result && (
+            <div className="max-h-48 overflow-y-auto rounded-md bg-[var(--color-bg-mute)] p-1.5 text-xs">
+              <p className="font-semibold">
+                {dictionary.result.word}
+                {dictionary.result.phonetic && (
+                  <span className="ml-1 font-normal text-[var(--color-text-soft)]">
+                    {dictionary.result.phonetic}
+                  </span>
+                )}
+              </p>
+              <ul className="mt-1 list-inside list-disc space-y-1">
+                {dictionary.result.definitions.map((def, i) => (
+                  <li key={i}>{def}</li>
+                ))}
+              </ul>
+              {dictionary.result.synonyms.length > 0 && (
+                <p className="mt-1 text-[var(--color-text-soft)]">
+                  Sinónimos: {dictionary.result.synonyms.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

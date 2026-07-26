@@ -119,3 +119,16 @@ export interface PdfHighlightLocation {
   page: number
   rects: Array<{ x: number; y: number; w: number; h: number }>
 }
+
+export interface TranslationResult {
+  translatedText: string
+  detectedLanguage: string | null
+}
+
+export interface DictionaryResult {
+  word: string
+  language: 'en' | 'es'
+  phonetic: string | null
+  definitions: string[]
+  synonyms: string[]
+}
