@@ -43,11 +43,12 @@ Funcional: elegir carpeta de biblioteca, agregar libros (EPUB/PDF), listarlos co
 lector EPUB/PDF, progreso, subrayados/notas, marcadores, tema de interfaz (claro/oscuro/sistema)
 separado del tema de lectura (claro/oscuro), texto a voz (TTS vía Web Speech API), traducción y
 diccionario de definiciones al seleccionar texto, panel de índice/páginas, buscador de texto en
-el lector, catálogo de libros gratuitos de Project Gutenberg (buscar y agregar a la biblioteca) y
+el lector, catálogo de libros gratuitos de Project Gutenberg (buscar y agregar a la biblioteca),
+tipografía del lector EPUB (fuente, tamaño, interlineado, columnas, configurable en Ajustes) y
 estadísticas de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
 
-Pendiente (siguientes pasos): tipografía del lector, metadata real de libros (autor/título desde
-el EPUB/PDF en vez del nombre del archivo).
+Pendiente (siguientes pasos): metadata real de libros (autor/título desde el EPUB/PDF en vez del
+nombre del archivo).
 
 ## Desarrollo
 

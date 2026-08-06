@@ -84,9 +84,11 @@ export interface ReadingStatsSummary {
 }
 
 export interface AppSettings {
-  libraryFolder: string | null
-  theme: 'light' | 'dark' | 'system'
-  fontFamily: string
+  libraryFolder: string
+  theme: string
+  readerTheme: string
+  /** Solo aplica al lector EPUB; el PDF se renderiza como imagen y usa zoom en vez de tipografia. */
+  fontFamily: ReaderFontId
   fontSize: number
   lineSpacing: number
   columns: 1 | 2
@@ -132,6 +134,15 @@ export interface DictionaryResult {
   definitions: string[]
   synonyms: string[]
 }
+
+/** Juegos de fuente disponibles para el lector EPUB (compartido entre Ajustes y el lector). */
+export const READER_FONT_OPTIONS = [
+  { id: 'default', label: 'Predeterminada', family: '' },
+  { id: 'serif', label: 'Serif', family: 'Georgia, "Times New Roman", serif' },
+  { id: 'sans', label: 'Sans-serif', family: '"Segoe UI", Arial, sans-serif' }
+] as const
+
+export type ReaderFontId = (typeof READER_FONT_OPTIONS)[number]['id']
 
 export interface CatalogBook {
   gutenbergId: number

@@ -21,8 +21,10 @@ import type {
   Bookmark,
   BookWithProgress,
   DictionaryResult,
-  PdfHighlightLocation
+  PdfHighlightLocation,
+  ReaderFontId
 } from '@shared/types'
+import { READER_FONT_OPTIONS } from '@shared/types'
 import { useReadingSession } from '@renderer/hooks/useReadingSession'
 import { useTts } from '@renderer/hooks/useTts'
 
@@ -157,6 +159,21 @@ function TocList({
   )
 }
 
+/** Solo aplica al EPUB: el PDF se renderiza como imagen de la pagina original. */
+function applyReaderTypography(
+  rendition: Rendition,
+  fontFamily: ReaderFontId,
+  fontSize: number,
+  lineSpacing: number,
+  columns: 1 | 2
+): void {
+  const fontOption = READER_FONT_OPTIONS.find((f) => f.id === fontFamily)
+  rendition.themes.font(fontOption?.family ?? '')
+  rendition.themes.fontSize(`${fontSize}%`)
+  rendition.themes.override('line-height', String(lineSpacing), true)
+  rendition.spread(columns === 2 ? 'auto' : 'none')
+}
+
 function parsePdfLocation(location: string): PdfHighlightLocation | null {
   try {
     const parsed = JSON.parse(location) as PdfHighlightLocation
@@ -226,6 +243,10 @@ export default function ReaderView(): React.JSX.Element {
   const { bookId } = useParams<{ bookId: string }>()
   const [readerTheme, setReaderThemeState] = useState<'light' | 'dark'>('light')
   const isReaderDark = readerTheme === 'dark'
+  const [fontFamily, setFontFamily] = useState<ReaderFontId>('default')
+  const [fontSize, setFontSize] = useState(100)
+  const [lineSpacing, setLineSpacing] = useState(1.5)
+  const [columns, setColumns] = useState<1 | 2>(1)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const epubContainerRef = useRef<HTMLDivElement | null>(null)
   const renditionRef = useRef<Rendition | null>(null)
@@ -284,6 +305,10 @@ export default function ReaderView(): React.JSX.Element {
       if (settings.readerTheme === 'dark' || settings.readerTheme === 'light') {
         setReaderThemeState(settings.readerTheme)
       }
+      setFontFamily(settings.fontFamily)
+      setFontSize(settings.fontSize)
+      setLineSpacing(settings.lineSpacing)
+      setColumns(settings.columns)
     })
   }, [])
 
@@ -418,6 +443,7 @@ export default function ReaderView(): React.JSX.Element {
             a: { color: '#60a5fa !important' }
           })
           rendition.themes.select(isReaderDark ? 'dark' : 'default')
+          applyReaderTypography(rendition, fontFamily, fontSize, lineSpacing, columns)
 
           epub.loaded.navigation.then((nav) => {
             if (!cancelled) setToc(nav.toc)
@@ -497,8 +523,9 @@ export default function ReaderView(): React.JSX.Element {
       pdfDocRef.current?.loadingTask.destroy()
       pdfDocRef.current = null
     }
-    // `isReaderDark` solo se usa aca para el estado inicial del tema del rendition recien creado; los
-    // cambios en vivo los maneja el efecto de abajo. Incluirlo aca recargaria el libro entero.
+    // `isReaderDark` y la tipografia solo se usan aca para el estado inicial del rendition recien
+    // creado; los cambios en vivo los manejan los efectos de abajo. Incluirlos aca recargaria el
+    // libro entero.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId])
 
@@ -743,6 +770,11 @@ export default function ReaderView(): React.JSX.Element {
     if (isPdf) return
     renditionRef.current?.themes.select(isReaderDark ? 'dark' : 'default')
   }, [isReaderDark, isPdf])
+
+  useEffect(() => {
+    if (isPdf || !renditionRef.current) return
+    applyReaderTypography(renditionRef.current, fontFamily, fontSize, lineSpacing, columns)
+  }, [isPdf, fontFamily, fontSize, lineSpacing, columns])
 
   function toggleReaderTheme(): void {
     const next = isReaderDark ? 'light' : 'dark'

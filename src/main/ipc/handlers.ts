@@ -33,15 +33,24 @@ import {
   titleFromFilename
 } from '../library'
 import type {
+  AppSettings,
   CatalogBook,
   DictionaryResult,
   NewAnnotationInput,
   NewBookmarkInput,
+  ReaderFontId,
   TranslationResult
 } from '../../shared/types'
 
 // Limite practico por consulta de la API gratuita de MyMemory (evita requests rechazados por texto muy largo).
 const TRANSLATE_MAX_CHARS = 480
+
+const TYPOGRAPHY_DEFAULTS = {
+  fontFamily: 'default' as ReaderFontId,
+  fontSize: 100,
+  lineSpacing: 1.5,
+  columns: 1 as const
+}
 
 const GUTENDEX_BASE_URL = 'https://gutendex.com/books/'
 
@@ -200,10 +209,14 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow): Promise<vo
   await openDatabase(join(config.libraryFolder, 'library.db'))
   closeOrphanSessions()
 
-  ipcMain.handle('settings:get', () => ({
+  ipcMain.handle('settings:get', (): AppSettings => ({
     libraryFolder: config.libraryFolder,
     theme: getSetting('theme') ?? 'system',
-    readerTheme: getSetting('readerTheme') ?? 'light'
+    readerTheme: getSetting('readerTheme') ?? 'light',
+    fontFamily: (getSetting('fontFamily') as ReaderFontId | null) ?? TYPOGRAPHY_DEFAULTS.fontFamily,
+    fontSize: Number(getSetting('fontSize') ?? TYPOGRAPHY_DEFAULTS.fontSize),
+    lineSpacing: Number(getSetting('lineSpacing') ?? TYPOGRAPHY_DEFAULTS.lineSpacing),
+    columns: (Number(getSetting('columns') ?? TYPOGRAPHY_DEFAULTS.columns) === 2 ? 2 : 1) as 1 | 2
   }))
 
   ipcMain.handle('settings:chooseLibraryFolder', async () => {
@@ -222,6 +235,22 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow): Promise<vo
 
   ipcMain.handle('settings:setReaderTheme', (_event, readerTheme: string) => {
     setSetting('readerTheme', readerTheme)
+  })
+
+  ipcMain.handle('settings:setFontFamily', (_event, fontFamily: string) => {
+    setSetting('fontFamily', fontFamily)
+  })
+
+  ipcMain.handle('settings:setFontSize', (_event, fontSize: number) => {
+    setSetting('fontSize', String(fontSize))
+  })
+
+  ipcMain.handle('settings:setLineSpacing', (_event, lineSpacing: number) => {
+    setSetting('lineSpacing', String(lineSpacing))
+  })
+
+  ipcMain.handle('settings:setColumns', (_event, columns: number) => {
+    setSetting('columns', String(columns))
   })
 
   ipcMain.handle('library:getBooks', () => listBooks())

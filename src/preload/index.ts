@@ -8,6 +8,11 @@ const api = {
   setTheme: (theme: string) => ipcRenderer.invoke('settings:setTheme', theme),
   setReaderTheme: (readerTheme: string) =>
     ipcRenderer.invoke('settings:setReaderTheme', readerTheme),
+  setFontFamily: (fontFamily: string) => ipcRenderer.invoke('settings:setFontFamily', fontFamily),
+  setFontSize: (fontSize: number) => ipcRenderer.invoke('settings:setFontSize', fontSize),
+  setLineSpacing: (lineSpacing: number) =>
+    ipcRenderer.invoke('settings:setLineSpacing', lineSpacing),
+  setColumns: (columns: number) => ipcRenderer.invoke('settings:setColumns', columns),
   getBooks: () => ipcRenderer.invoke('library:getBooks'),
   addBooks: () => ipcRenderer.invoke('library:addBooks'),
   getBook: (bookId: string) => ipcRenderer.invoke('library:getBook', bookId),

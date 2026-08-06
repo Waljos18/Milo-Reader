@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   AnnotationEntry,
+  AppSettings,
   Bookmark,
   BookWithProgress,
   CatalogBook,
@@ -18,10 +19,14 @@ import type {
 } from '../shared/types'
 
 export interface MiloReaderApi {
-  getSettings: () => Promise<{ libraryFolder: string; theme: string; readerTheme: string }>
+  getSettings: () => Promise<AppSettings>
   chooseLibraryFolder: () => Promise<string>
   setTheme: (theme: string) => Promise<void>
   setReaderTheme: (readerTheme: string) => Promise<void>
+  setFontFamily: (fontFamily: string) => Promise<void>
+  setFontSize: (fontSize: number) => Promise<void>
+  setLineSpacing: (lineSpacing: number) => Promise<void>
+  setColumns: (columns: number) => Promise<void>
   getBooks: () => Promise<BookWithProgress[]>
   addBooks: () => Promise<BookWithProgress[]>
   getBook: (bookId: string) => Promise<BookWithProgress | null>
