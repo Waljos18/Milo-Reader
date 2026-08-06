@@ -132,3 +132,20 @@ export interface DictionaryResult {
   definitions: string[]
   synonyms: string[]
 }
+
+export interface CatalogBook {
+  gutenbergId: number
+  title: string
+  author: string | null
+  coverUrl: string | null
+  epubUrl: string
+  languages: string[]
+  downloadCount: number
+}
+
+export interface CatalogSearchResult {
+  books: CatalogBook[]
+  count: number
+  hasNext: boolean
+  hasPrevious: boolean
+}

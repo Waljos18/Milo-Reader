@@ -14,12 +14,8 @@ export function coversDir(libraryFolder: string): string {
   return dir
 }
 
-/** Copies a book into the library folder (so OneDrive/Drive syncs it too) and returns its new path. */
-export function importBookFile(libraryFolder: string, sourcePath: string): string {
-  const dir = booksDir(libraryFolder)
-  const ext = extname(sourcePath)
-  const base = basename(sourcePath, ext)
-
+/** Evita pisar un archivo existente agregando " (1)", " (2)", etc. al nombre base. */
+function uniqueDestPath(dir: string, base: string, ext: string): string {
   let destName = `${base}${ext}`
   let destPath = join(dir, destName)
   let counter = 1
@@ -28,8 +24,25 @@ export function importBookFile(libraryFolder: string, sourcePath: string): strin
     destPath = join(dir, destName)
     counter++
   }
+  return destPath
+}
 
+/** Copies a book into the library folder (so OneDrive/Drive syncs it too) and returns its new path. */
+export function importBookFile(libraryFolder: string, sourcePath: string): string {
+  const dir = booksDir(libraryFolder)
+  const ext = extname(sourcePath)
+  const base = basename(sourcePath, ext)
+  const destPath = uniqueDestPath(dir, base, ext)
   copyFileSync(sourcePath, destPath)
+  return destPath
+}
+
+/** Guarda un EPUB descargado (p. ej. del catalogo Gutendex) en la carpeta de biblioteca. */
+export function importBookBuffer(libraryFolder: string, title: string, bytes: Uint8Array): string {
+  const dir = booksDir(libraryFolder)
+  const safeBase = title.replace(/[\\/:*?"<>|]/g, '_').trim() || 'libro'
+  const destPath = uniqueDestPath(dir, safeBase, '.epub')
+  writeFileSync(destPath, bytes)
   return destPath
 }
 
@@ -44,9 +57,14 @@ export function titleFromFilename(filePath: string): string {
   return basename(filePath, extname(filePath))
 }
 
-export function saveCoverFile(libraryFolder: string, bookId: string, bytes: Uint8Array): string {
+export function saveCoverFile(
+  libraryFolder: string,
+  bookId: string,
+  bytes: Uint8Array,
+  ext: string = 'png'
+): string {
   const dir = coversDir(libraryFolder)
-  const destPath = join(dir, `${bookId}.png`)
+  const destPath = join(dir, `${bookId}.${ext}`)
   writeFileSync(destPath, bytes)
   return destPath
 }

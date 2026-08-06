@@ -3,6 +3,8 @@ import type {
   AnnotationEntry,
   Bookmark,
   BookWithProgress,
+  CatalogBook,
+  CatalogSearchResult,
   DictionaryResult,
   GlobalAnnotationEntry,
   Highlight,
@@ -40,6 +42,9 @@ export interface MiloReaderApi {
   getCoverFile: (bookId: string) => Promise<Uint8Array | null>
   translateText: (text: string) => Promise<TranslationResult>
   lookupWord: (word: string) => Promise<DictionaryResult>
+  searchCatalog: (query: string, page: number) => Promise<CatalogSearchResult>
+  getCatalogCover: (url: string) => Promise<Uint8Array | null>
+  downloadCatalogBook: (book: CatalogBook) => Promise<BookWithProgress[]>
 }
 
 declare global {

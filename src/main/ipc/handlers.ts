@@ -25,8 +25,15 @@ import {
   startReadingSession,
   touchLastOpened
 } from '../db/repositories'
-import { detectFormat, importBookFile, saveCoverFile, titleFromFilename } from '../library'
+import {
+  detectFormat,
+  importBookBuffer,
+  importBookFile,
+  saveCoverFile,
+  titleFromFilename
+} from '../library'
 import type {
+  CatalogBook,
   DictionaryResult,
   NewAnnotationInput,
   NewBookmarkInput,
@@ -35,6 +42,31 @@ import type {
 
 // Limite practico por consulta de la API gratuita de MyMemory (evita requests rechazados por texto muy largo).
 const TRANSLATE_MAX_CHARS = 480
+
+const GUTENDEX_BASE_URL = 'https://gutendex.com/books/'
+
+/** Solo interesan libros con EPUB descargable; Gutendex tambien lista formatos sin ese link. */
+function parseGutendexBook(raw: {
+  id: number
+  title?: string
+  authors?: Array<{ name?: string }>
+  languages?: string[]
+  download_count?: number
+  formats?: Record<string, string>
+}): CatalogBook | null {
+  const epubUrl = raw.formats?.['application/epub+zip']
+  if (!epubUrl) return null
+
+  return {
+    gutenbergId: raw.id,
+    title: raw.title ?? 'Sin titulo',
+    author: raw.authors?.[0]?.name ?? null,
+    coverUrl: raw.formats?.['image/jpeg'] ?? null,
+    epubUrl,
+    languages: raw.languages ?? [],
+    downloadCount: raw.download_count ?? 0
+  }
+}
 
 async function lookupEnglishWord(word: string): Promise<DictionaryResult | null> {
   const response = await fetch(
@@ -324,4 +356,65 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow): Promise<vo
       throw new Error(`No se encontro definicion para "${word}"`)
     }
   )
+
+  ipcMain.handle('catalog:search', async (_event, query: string, page: number) => {
+    const url = new URL(GUTENDEX_BASE_URL)
+    if (query.trim()) url.searchParams.set('search', query.trim())
+    url.searchParams.set('page', String(Math.max(1, page)))
+
+    const response = await fetch(url.toString())
+    if (!response.ok) throw new Error(`Catalogo fallo (HTTP ${response.status})`)
+    const data = await response.json()
+
+    const books = ((data.results ?? []) as Parameters<typeof parseGutendexBook>[0][])
+      .map(parseGutendexBook)
+      .filter((b): b is CatalogBook => b !== null)
+
+    return {
+      books,
+      count: data.count ?? books.length,
+      hasNext: Boolean(data.next),
+      hasPrevious: Boolean(data.previous)
+    }
+  })
+
+  ipcMain.handle(
+    'catalog:getCover',
+    async (_event, coverUrl: string): Promise<Uint8Array | null> => {
+      const response = await fetch(coverUrl)
+      if (!response.ok) return null
+      return new Uint8Array(await response.arrayBuffer())
+    }
+  )
+
+  ipcMain.handle('catalog:download', async (_event, book: CatalogBook) => {
+    const epubResponse = await fetch(book.epubUrl)
+    if (!epubResponse.ok) throw new Error(`Descarga fallo (HTTP ${epubResponse.status})`)
+    const epubBytes = new Uint8Array(await epubResponse.arrayBuffer())
+
+    const destPath = importBookBuffer(config.libraryFolder, book.title, epubBytes)
+    const newBook = addBook({
+      title: book.title,
+      author: book.author,
+      filePath: destPath,
+      format: 'epub',
+      coverPath: null,
+      totalLocations: null
+    })
+
+    if (book.coverUrl) {
+      try {
+        const coverResponse = await fetch(book.coverUrl)
+        if (coverResponse.ok) {
+          const coverBytes = new Uint8Array(await coverResponse.arrayBuffer())
+          const coverPath = saveCoverFile(config.libraryFolder, newBook.id, coverBytes, 'jpg')
+          setCoverPath(newBook.id, coverPath)
+        }
+      } catch {
+        // La portada es opcional: si falla, el libro ya quedo agregado sin ella.
+      }
+    }
+
+    return listBooks()
+  })
 }

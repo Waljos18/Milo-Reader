@@ -30,7 +30,10 @@ const api = {
     ipcRenderer.invoke('library:saveCover', bookId, bytes),
   getCoverFile: (bookId: string) => ipcRenderer.invoke('library:getCoverFile', bookId),
   translateText: (text: string) => ipcRenderer.invoke('translation:translate', text),
-  lookupWord: (word: string) => ipcRenderer.invoke('dictionary:lookup', word)
+  lookupWord: (word: string) => ipcRenderer.invoke('dictionary:lookup', word),
+  searchCatalog: (query: string, page: number) => ipcRenderer.invoke('catalog:search', query, page),
+  getCatalogCover: (url: string) => ipcRenderer.invoke('catalog:getCover', url),
+  downloadCatalogBook: (book: unknown) => ipcRenderer.invoke('catalog:download', book)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

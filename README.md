@@ -17,6 +17,8 @@ para costo $0 y cero fricción de instalación.
   Wiktionary para definiciones)
 - Sincronización entre equipos: sin backend. La carpeta de biblioteca (elegible en Ajustes) debe
   vivir dentro de OneDrive/Google Drive; ellos sincronizan el `library.db` y los libros.
+- Catálogo de libros gratuitos: API de Gutendex (Project Gutenberg) para buscar y descargar EPUB
+  directamente a la biblioteca.
 
 ## Estructura
 
@@ -41,10 +43,11 @@ Funcional: elegir carpeta de biblioteca, agregar libros (EPUB/PDF), listarlos co
 lector EPUB/PDF, progreso, subrayados/notas, marcadores, tema de interfaz (claro/oscuro/sistema)
 separado del tema de lectura (claro/oscuro), texto a voz (TTS vía Web Speech API), traducción y
 diccionario de definiciones al seleccionar texto, panel de índice/páginas, buscador de texto en
-el lector y estadísticas de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
+el lector, catálogo de libros gratuitos de Project Gutenberg (buscar y agregar a la biblioteca) y
+estadísticas de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
 
-Pendiente (siguientes pasos): catálogo de libros gratuitos (Gutendex), tipografía del lector,
-metadata real de libros (autor/título desde el EPUB/PDF en vez del nombre del archivo).
+Pendiente (siguientes pasos): tipografía del lector, metadata real de libros (autor/título desde
+el EPUB/PDF en vez del nombre del archivo).
 
 ## Desarrollo
 
