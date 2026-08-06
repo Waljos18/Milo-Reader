@@ -13,7 +13,8 @@ para costo $0 y cero fricción de instalación.
 - **Tailwind CSS v4**
 - **react-router-dom** (HashRouter, requerido en Electron)
 - TTS vía Web Speech API del navegador (voces nativas de Windows, sin librería extra)
-- Traducción/diccionario: APIs gratuitas (MyMemory, dictionaryapi.dev) — pendiente de integrar
+- Traducción/diccionario: APIs gratuitas (MyMemory para traducir, dictionaryapi.dev con fallback a
+  Wiktionary para definiciones)
 - Sincronización entre equipos: sin backend. La carpeta de biblioteca (elegible en Ajustes) debe
   vivir dentro de OneDrive/Google Drive; ellos sincronizan el `library.db` y los libros.
 
@@ -38,11 +39,12 @@ src/
 
 Funcional: elegir carpeta de biblioteca, agregar libros (EPUB/PDF), listarlos con portadas,
 lector EPUB/PDF, progreso, subrayados/notas, marcadores, tema de interfaz (claro/oscuro/sistema)
-separado del tema de lectura (claro/oscuro), texto a voz (TTS vía Web Speech API) y estadísticas
-de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
+separado del tema de lectura (claro/oscuro), texto a voz (TTS vía Web Speech API), traducción y
+diccionario de definiciones al seleccionar texto, panel de índice/páginas, buscador de texto en
+el lector y estadísticas de lectura (tiempo total, sesiones, avance por libro, últimos 7 días).
 
-Pendiente (siguientes pasos): diccionario/traducción, catálogo de libros gratuitos (Gutendex),
-tipografía del lector, metadata real de libros.
+Pendiente (siguientes pasos): catálogo de libros gratuitos (Gutendex), tipografía del lector,
+metadata real de libros (autor/título desde el EPUB/PDF en vez del nombre del archivo).
 
 ## Desarrollo
 
