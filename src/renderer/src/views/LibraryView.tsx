@@ -220,6 +220,9 @@ export default function LibraryView(): React.JSX.Element {
               )}
             </div>
             <span className="truncate text-sm font-medium">{book.title}</span>
+            {book.author && (
+              <span className="truncate text-xs text-[var(--color-text-soft)]">{book.author}</span>
+            )}
             {book.progress && (
               <span className="text-xs text-[var(--color-text-soft)]">
                 {Math.round(book.progress.percentComplete)}%
