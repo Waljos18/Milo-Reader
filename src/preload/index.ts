@@ -15,6 +15,8 @@ const api = {
   setColumns: (columns: number) => ipcRenderer.invoke('settings:setColumns', columns),
   getBooks: () => ipcRenderer.invoke('library:getBooks'),
   addBooks: () => ipcRenderer.invoke('library:addBooks'),
+  updateMetadata: (bookId: string, title: string, author: string | null) =>
+    ipcRenderer.invoke('library:updateMetadata', bookId, title, author),
   getBook: (bookId: string) => ipcRenderer.invoke('library:getBook', bookId),
   getBookFile: (bookId: string) => ipcRenderer.invoke('library:getBookFile', bookId),
   getProgress: (bookId: string) => ipcRenderer.invoke('library:getProgress', bookId),

@@ -23,7 +23,8 @@ import {
   setCoverPath,
   setSetting,
   startReadingSession,
-  touchLastOpened
+  touchLastOpened,
+  updateBookMetadata
 } from '../db/repositories'
 import {
   detectFormat,
@@ -33,6 +34,7 @@ import {
   titleFromFilename
 } from '../library'
 import type {
+  AddBooksResult,
   AppSettings,
   CatalogBook,
   DictionaryResult,
@@ -255,19 +257,20 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow): Promise<vo
 
   ipcMain.handle('library:getBooks', () => listBooks())
 
-  ipcMain.handle('library:addBooks', async () => {
+  ipcMain.handle('library:addBooks', async (): Promise<AddBooksResult> => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Libros', extensions: ['epub', 'pdf'] }]
     })
-    if (result.canceled) return listBooks()
+    if (result.canceled) return { books: listBooks(), newBookIds: [] }
 
+    const newBookIds: string[] = []
     for (const sourcePath of result.filePaths) {
       const format = detectFormat(sourcePath)
       if (!format) continue
 
       const destPath = importBookFile(config.libraryFolder, sourcePath)
-      addBook({
+      const book = addBook({
         title: titleFromFilename(sourcePath),
         author: null,
         filePath: destPath,
@@ -275,10 +278,20 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow): Promise<vo
         coverPath: null,
         totalLocations: null
       })
+      newBookIds.push(book.id)
     }
 
-    return listBooks()
+    return { books: listBooks(), newBookIds }
   })
+
+  // El titulo/autor real se lee del EPUB/PDF en el renderer (epub.js/pdf.js corren ahi) y se
+  // persiste con este handler, reemplazando el titulo derivado del nombre de archivo.
+  ipcMain.handle(
+    'library:updateMetadata',
+    (_event, bookId: string, title: string, author: string | null) => {
+      updateBookMetadata(bookId, title, author)
+    }
+  )
 
   ipcMain.handle('library:getBook', (_event, bookId: string) => {
     const book = getBookById(bookId)

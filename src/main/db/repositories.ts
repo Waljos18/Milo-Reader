@@ -160,6 +160,16 @@ export function setCoverPath(bookId: string, coverPath: string): void {
   persist()
 }
 
+/** Reemplaza el titulo (derivado del nombre de archivo al importar) y autor por la metadata real del EPUB/PDF. */
+export function updateBookMetadata(bookId: string, title: string, author: string | null): void {
+  getDb().run('UPDATE book SET title = :title, author = :author WHERE id = :id', {
+    ':title': title,
+    ':author': author,
+    ':id': bookId
+  })
+  persist()
+}
+
 export function addHighlightWithNote(input: NewAnnotationInput): {
   highlight: Highlight
   note: Note | null

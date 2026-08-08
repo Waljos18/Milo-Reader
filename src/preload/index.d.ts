@@ -1,5 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
+  AddBooksResult,
   AnnotationEntry,
   AppSettings,
   Bookmark,
@@ -28,7 +29,8 @@ export interface MiloReaderApi {
   setLineSpacing: (lineSpacing: number) => Promise<void>
   setColumns: (columns: number) => Promise<void>
   getBooks: () => Promise<BookWithProgress[]>
-  addBooks: () => Promise<BookWithProgress[]>
+  addBooks: () => Promise<AddBooksResult>
+  updateMetadata: (bookId: string, title: string, author: string | null) => Promise<void>
   getBook: (bookId: string) => Promise<BookWithProgress | null>
   getBookFile: (bookId: string) => Promise<Uint8Array>
   getProgress: (bookId: string) => Promise<ReadingProgress | null>

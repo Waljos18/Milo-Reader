@@ -98,6 +98,12 @@ export interface BookWithProgress extends Book {
   progress: ReadingProgress | null
 }
 
+/** IDs de los libros recien insertados, para que el renderer pueda extraerles metadata real (EPUB/PDF corren epub.js/pdf.js del lado del renderer). */
+export interface AddBooksResult {
+  books: BookWithProgress[]
+  newBookIds: string[]
+}
+
 export interface AnnotationEntry {
   highlight: Highlight
   note: Note | null

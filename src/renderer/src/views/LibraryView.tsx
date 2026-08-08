@@ -53,6 +53,35 @@ async function generateEpubCover(fileBytes: Uint8Array): Promise<Uint8Array | nu
   return resizeToPng(bytes)
 }
 
+interface ExtractedMetadata {
+  title: string | null
+  author: string | null
+}
+
+async function extractEpubMetadata(fileBytes: Uint8Array): Promise<ExtractedMetadata> {
+  const book = ePub(fileBytes.buffer as ArrayBuffer)
+  await book.ready
+  const meta = book.packaging.metadata
+  return {
+    title: meta.title?.trim() || null,
+    author: meta.creator?.trim() || null
+  }
+}
+
+async function extractPdfMetadata(fileBytes: Uint8Array): Promise<ExtractedMetadata> {
+  const doc = await getDocument({ data: fileBytes }).promise
+  try {
+    const { info } = await doc.getMetadata()
+    const { Title, Author } = info as { Title?: string; Author?: string }
+    return {
+      title: Title?.trim() || null,
+      author: Author?.trim() || null
+    }
+  } finally {
+    doc.loadingTask.destroy()
+  }
+}
+
 async function generatePdfCover(fileBytes: Uint8Array): Promise<Uint8Array | null> {
   const doc = await getDocument({ data: fileBytes }).promise
   try {
@@ -125,8 +154,30 @@ export default function LibraryView(): React.JSX.Element {
   }, [books])
 
   const handleAddBooks = async (): Promise<void> => {
-    const updated = await window.api.addBooks()
+    const { books: updated, newBookIds } = await window.api.addBooks()
     setBooks(updated)
+
+    for (const bookId of newBookIds) {
+      const book = updated.find((b) => b.id === bookId)
+      if (!book) continue
+
+      try {
+        const fileBytes = await window.api.getBookFile(bookId)
+        const meta =
+          book.format === 'epub'
+            ? await extractEpubMetadata(fileBytes)
+            : await extractPdfMetadata(fileBytes)
+        if (!meta.title && !meta.author) continue
+
+        const title = meta.title ?? book.title
+        await window.api.updateMetadata(bookId, title, meta.author)
+        setBooks((prev) =>
+          prev.map((b) => (b.id === bookId ? { ...b, title, author: meta.author } : b))
+        )
+      } catch {
+        continue
+      }
+    }
   }
 
   return (
