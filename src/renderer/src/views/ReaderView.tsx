@@ -379,6 +379,12 @@ export default function ReaderView(): React.JSX.Element {
       if (textLayerContainer) {
         textLayerContainer.replaceChildren()
         textLayerContainer.style.setProperty('--total-scale-factor', String(viewport.scale))
+        // El offset de recorte se fija antes de poblar el layer: si se deja para despues del
+        // render, los spans nuevos aparecen brevemente con el offset de la pagina/escala anterior,
+        // desalineados del canvas ya actualizado, y un doble clic en esa ventana selecciona la
+        // palabra equivocada.
+        textLayerContainer.style.left = `-${sx}px`
+        textLayerContainer.style.top = `-${sy}px`
         const textContent = await pdfPage.getTextContent()
         if (generation !== renderGenerationRef.current) return
         const textLayer = new TextLayer({
@@ -392,9 +398,6 @@ export default function ReaderView(): React.JSX.Element {
         } catch {
           // cancelado por un render mas nuevo, ignorar
         }
-        if (generation !== renderGenerationRef.current) return
-        textLayerContainer.style.left = `-${sx}px`
-        textLayerContainer.style.top = `-${sy}px`
       }
     },
     [zoomOverride]
@@ -557,6 +560,44 @@ export default function ReaderView(): React.JSX.Element {
     const boxRect = box.getBoundingClientRect()
     const selection = window.getSelection()
     const text = selection?.toString().trim() ?? ''
+
+    // DEBUG TEMPORAL: diagnostico de desalineacion canvas vs textLayer.
+    {
+      const rectOf = (el: Element | null | undefined): Record<string, number> | null => {
+        if (!el) return null
+        const r = el.getBoundingClientRect()
+        return { l: r.left, t: r.top, w: r.width, h: r.height }
+      }
+      const spanOf = (node: Node | null | undefined): Element | null => {
+        if (!node) return null
+        return node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+      }
+      const anchorSpan = spanOf(selection?.anchorNode)
+      const focusSpan = spanOf(selection?.focusNode)
+      const stack = document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .filter((el) => el.tagName === 'SPAN' || el.tagName === 'BR')
+        .slice(0, 3)
+        .map((el) => ({ text: el.textContent?.slice(0, 20), rect: rectOf(el) }))
+      console.log(
+        '[PDF_SELECT_DEBUG] ' +
+          JSON.stringify({
+            clientX: e.clientX,
+            clientY: e.clientY,
+            boxRect: rectOf(box),
+            anchorSpan: anchorSpan && {
+              text: anchorSpan.textContent?.slice(0, 20),
+              rect: rectOf(anchorSpan)
+            },
+            focusSpan: focusSpan && {
+              text: focusSpan.textContent?.slice(0, 20),
+              rect: rectOf(focusSpan)
+            },
+            spansAtPoint: stack,
+            selectedText: text
+          })
+      )
+    }
 
     if (text && selection && selection.rangeCount > 0 && box.contains(selection.anchorNode)) {
       const range = selection.getRangeAt(0)
@@ -842,43 +883,49 @@ export default function ReaderView(): React.JSX.Element {
 
   return (
     <div ref={rootRef} className="flex h-full flex-col bg-[var(--color-bg)]">
-      <div className="mb-3 flex items-center justify-between gap-4 p-2">
-        <h2 className="truncate text-lg font-semibold">{book?.title ?? 'Cargando...'}</h2>
-        {book && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--color-text-soft)]">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1 py-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-serif truncate whitespace-nowrap text-lg font-semibold">
+            {book?.title ?? 'Cargando...'}
+          </h2>
+          {book && (
+            <p className="mt-0.5 whitespace-nowrap text-[11.5px] text-[var(--color-text-faint)]">
               {isPdf
-                ? `Pagina ${pageNum} / ${numPages} (${displayPercent}%)`
+                ? `Página ${pageNum} / ${numPages} · ${displayPercent}%`
                 : `${displayPercent}%`}
-            </span>
+            </p>
+          )}
+        </div>
+        {book && (
+          <div className="flex flex-wrap items-center gap-0.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-1.5 shadow-[var(--shadow-sm)]">
             <button
               onClick={goPrev}
               disabled={isPdf && pageNum <= 1}
-              className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+              className="rounded-lg px-3 py-1.5 text-sm hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
             >
               Anterior
             </button>
             <button
               onClick={goNext}
               disabled={isPdf && pageNum >= numPages}
-              className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+              className="rounded-lg px-3 py-1.5 text-sm hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
             >
               Siguiente
             </button>
             {isPdf && (
-              <div className="flex items-center gap-1">
+              <div className="mx-1 flex items-center gap-0.5 border-l border-[var(--color-border)] pl-1.5">
                 <button
                   onClick={zoomOut}
                   disabled={zoomOverride <= 0.5}
                   title="Alejar"
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+                  className="rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
                 >
                   −
                 </button>
                 <button
                   onClick={resetZoom}
                   title="Restablecer a zoom automatico"
-                  className="min-w-[7rem] rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+                  className="min-w-[7rem] rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)]"
                 >
                   {Math.abs(zoomOverride - 1) < 0.02
                     ? 'Zoom automatico'
@@ -888,12 +935,13 @@ export default function ReaderView(): React.JSX.Element {
                   onClick={zoomIn}
                   disabled={zoomOverride >= 3}
                   title="Acercar"
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+                  className="rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
                 >
                   +
                 </button>
               </div>
             )}
+            <div className="mx-1 h-5 w-px bg-[var(--color-border)]" />
             <button
               onClick={handleTtsPlay}
               disabled={!tts.supported}
@@ -902,8 +950,10 @@ export default function ReaderView(): React.JSX.Element {
                   ? 'Reanudar lectura en voz alta'
                   : 'Leer en voz alta (página o selección)'
               }
-              className={`rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)] disabled:opacity-40 ${
-                tts.status === 'speaking' ? 'bg-[var(--color-bg-mute)]' : ''
+              className={`rounded-lg p-2 hover:bg-[var(--color-bg-soft)] disabled:opacity-40 ${
+                tts.status === 'speaking'
+                  ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]'
+                  : ''
               }`}
             >
               <svg
@@ -932,7 +982,7 @@ export default function ReaderView(): React.JSX.Element {
                   <button
                     onClick={tts.pause}
                     title="Pausar"
-                    className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+                    className="rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)]"
                   >
                     Pausar
                   </button>
@@ -940,7 +990,7 @@ export default function ReaderView(): React.JSX.Element {
                 <button
                   onClick={tts.stop}
                   title="Detener"
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+                  className="rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)]"
                 >
                   Detener
                 </button>
@@ -949,15 +999,18 @@ export default function ReaderView(): React.JSX.Element {
             <button
               onClick={tts.cycleRate}
               title="Velocidad de lectura"
-              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+              className="rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)]"
             >
               {tts.rate}x
             </button>
+            <div className="mx-1 h-5 w-px bg-[var(--color-border)]" />
             <button
               onClick={() => toggleSidebar('toc')}
               title="Índice / páginas"
-              className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
-                sidebarTab === 'toc' ? 'bg-[var(--color-bg-mute)]' : ''
+              className={`rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)] ${
+                sidebarTab === 'toc'
+                  ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]'
+                  : ''
               }`}
             >
               Índice
@@ -965,8 +1018,10 @@ export default function ReaderView(): React.JSX.Element {
             <button
               onClick={() => toggleSidebar('search')}
               title="Buscar en el libro"
-              className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
-                sidebarTab === 'search' ? 'bg-[var(--color-bg-mute)]' : ''
+              className={`rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)] ${
+                sidebarTab === 'search'
+                  ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]'
+                  : ''
               }`}
             >
               Buscar
@@ -974,7 +1029,7 @@ export default function ReaderView(): React.JSX.Element {
             <button
               onClick={addCurrentBookmark}
               title="Añadir marcador aquí"
-              className="rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)]"
+              className="rounded-lg p-2 hover:bg-[var(--color-bg-soft)]"
             >
               <svg
                 width="16"
@@ -992,16 +1047,19 @@ export default function ReaderView(): React.JSX.Element {
             <button
               onClick={() => toggleSidebar('bookmarks')}
               title="Ver marcadores"
-              className={`rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] ${
-                sidebarTab === 'bookmarks' ? 'bg-[var(--color-bg-mute)]' : ''
+              className={`rounded-lg px-2 py-1.5 text-xs hover:bg-[var(--color-bg-soft)] ${
+                sidebarTab === 'bookmarks'
+                  ? 'bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]'
+                  : ''
               }`}
             >
               Marcadores{bookmarks.length > 0 ? ` (${bookmarks.length})` : ''}
             </button>
+            <div className="mx-1 h-5 w-px bg-[var(--color-border)]" />
             <button
               onClick={toggleReaderTheme}
               title={isReaderDark ? 'Páginas en modo claro' : 'Páginas en modo oscuro'}
-              className="rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)]"
+              className="rounded-lg p-2 hover:bg-[var(--color-bg-soft)]"
             >
               {isReaderDark ? (
                 <svg
@@ -1035,7 +1093,7 @@ export default function ReaderView(): React.JSX.Element {
             <button
               onClick={toggleFullscreen}
               title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
-              className="rounded-md border border-[var(--color-border)] p-1.5 hover:bg-[var(--color-bg-mute)]"
+              className="rounded-lg p-2 hover:bg-[var(--color-bg-soft)]"
             >
               {isFullscreen ? (
                 <svg
@@ -1075,20 +1133,20 @@ export default function ReaderView(): React.JSX.Element {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={epubContainerRef}
-            className={`min-h-0 flex-1 rounded border border-[var(--color-border)] ${
-              isReaderDark ? 'bg-[#16161a]' : 'bg-white'
+            className={`min-h-0 flex-1 rounded-2xl border border-[var(--color-border)] shadow-[var(--shadow-md)] ${
+              isReaderDark ? 'bg-[#16161a]' : 'bg-[var(--color-paper)]'
             } ${error || isPdf ? 'hidden' : ''}`}
           />
 
           <div
             ref={pdfContainerRef}
-            className={`min-h-0 flex-1 overflow-auto rounded border border-[var(--color-border)] p-4 ${
+            className={`min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--color-border)] p-4 ${
               isReaderDark ? 'bg-black' : 'bg-[var(--color-bg-mute)]'
             } ${error || !isPdf ? 'hidden' : 'flex justify-center'}`}
           >
             <div
               ref={pageBoxRef}
-              className="relative inline-block h-fit"
+              className="relative inline-block h-fit shadow-[var(--shadow-md)]"
               onMouseUp={handlePageMouseUp}
             >
               <canvas
@@ -1123,9 +1181,9 @@ export default function ReaderView(): React.JSX.Element {
         </div>
 
         {sidebarTab && (
-          <aside className="ml-3 flex w-72 shrink-0 flex-col rounded border border-[var(--color-border)] bg-[var(--color-bg-soft)]">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-              <h3 className="text-sm font-medium">
+          <aside className="ml-4 flex w-64 shrink-0 flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)]">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3.5 py-3">
+              <h3 className="text-[13px] font-semibold">
                 {sidebarTab === 'toc'
                   ? 'Índice'
                   : sidebarTab === 'search'
@@ -1134,7 +1192,7 @@ export default function ReaderView(): React.JSX.Element {
               </h3>
               <button
                 onClick={() => setSidebarTab(null)}
-                className="rounded px-1.5 py-0.5 text-xs text-[var(--color-text-soft)] hover:bg-[var(--color-bg-mute)]"
+                className="rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-soft)] hover:bg-[var(--color-bg-soft)]"
               >
                 Cerrar
               </button>
@@ -1260,7 +1318,7 @@ export default function ReaderView(): React.JSX.Element {
 
       {pendingSelection && (
         <div
-          className="fixed z-50 flex w-60 flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-soft)] p-3 shadow-lg"
+          className="fixed z-50 flex w-64 flex-col gap-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-4 shadow-[var(--shadow-lg)]"
           style={{ left: pendingSelection.clientX, top: pendingSelection.clientY + 12 }}
         >
           <div className="flex items-center gap-2">
@@ -1269,7 +1327,7 @@ export default function ReaderView(): React.JSX.Element {
                 key={color}
                 onClick={() => setPendingColor(color)}
                 title={color}
-                className={`h-6 w-6 rounded-full border-2 ${
+                className={`h-[22px] w-[22px] rounded-full border-2 ${
                   pendingColor === color ? 'border-[var(--color-text)]' : 'border-transparent'
                 }`}
                 style={{ background: color }}
@@ -1279,16 +1337,16 @@ export default function ReaderView(): React.JSX.Element {
           <textarea
             value={pendingNote}
             onChange={(e) => setPendingNote(e.target.value)}
-            placeholder="Nota (opcional)"
+            placeholder="Añadir una nota (opcional)"
             rows={2}
-            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-1.5 text-xs"
+            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-xs"
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-2">
+            <div className="flex gap-1.5">
               <button
                 onClick={translateSelection}
                 disabled={translation?.loading}
-                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+                className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-[11.5px] font-semibold hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
               >
                 Traducir
               </button>
@@ -1296,22 +1354,22 @@ export default function ReaderView(): React.JSX.Element {
                 <button
                   onClick={lookupWordDefinition}
                   disabled={dictionary?.loading}
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)] disabled:opacity-40"
+                  className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-[11.5px] font-semibold hover:bg-[var(--color-bg-soft)] disabled:opacity-40"
                 >
                   Definición
                 </button>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <button
                 onClick={() => setPendingSelection(null)}
-                className="rounded-md px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+                className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-[var(--color-text-soft)] hover:bg-[var(--color-bg-soft)]"
               >
                 Cancelar
               </button>
               <button
                 onClick={saveHighlight}
-                className="rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs text-white"
+                className="rounded-full bg-[var(--color-accent)] px-2.5 py-1 text-[11.5px] font-semibold text-white"
               >
                 Guardar
               </button>
@@ -1323,7 +1381,12 @@ export default function ReaderView(): React.JSX.Element {
           )}
           {translation?.error && <p className="text-xs text-red-500">{translation.error}</p>}
           {translation?.text && (
-            <p className="rounded-md bg-[var(--color-bg-mute)] p-1.5 text-xs">{translation.text}</p>
+            <div className="rounded-lg bg-[var(--color-accent-soft)] p-2.5 text-xs">
+              <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-accent-hover)]">
+                Traducción
+              </p>
+              {translation.text}
+            </div>
           )}
 
           {dictionary?.loading && (
@@ -1331,7 +1394,7 @@ export default function ReaderView(): React.JSX.Element {
           )}
           {dictionary?.error && <p className="text-xs text-red-500">{dictionary.error}</p>}
           {dictionary?.result && (
-            <div className="max-h-48 overflow-y-auto rounded-md bg-[var(--color-bg-mute)] p-1.5 text-xs">
+            <div className="max-h-48 overflow-y-auto rounded-lg bg-[var(--color-bg-soft)] p-2.5 text-xs">
               <p className="font-semibold">
                 {dictionary.result.word}
                 {dictionary.result.phonetic && (
@@ -1357,23 +1420,27 @@ export default function ReaderView(): React.JSX.Element {
 
       {selectedHighlight && popoverPos && (
         <div
-          className="fixed z-50 flex w-60 flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-soft)] p-3 shadow-lg"
+          className="fixed z-50 flex w-64 flex-col gap-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-elevated)] p-4 shadow-[var(--shadow-lg)]"
           style={{ left: popoverPos.x, top: popoverPos.y + 12 }}
         >
-          <p className="text-xs italic text-[var(--color-text-soft)]">
+          <p className="font-serif text-[13.5px] italic leading-relaxed text-[var(--color-text)]">
             &ldquo;{selectedHighlight.highlight.selectedText}&rdquo;
           </p>
-          {selectedHighlight.note && <p className="text-xs">{selectedHighlight.note.text}</p>}
-          <div className="flex justify-end gap-2">
+          {selectedHighlight.note && (
+            <p className="rounded-lg bg-[var(--color-bg-soft)] p-2 text-xs">
+              {selectedHighlight.note.text}
+            </p>
+          )}
+          <div className="flex justify-end gap-1.5">
             <button
               onClick={() => setSelectedHighlight(null)}
-              className="rounded-md px-2 py-1 text-xs hover:bg-[var(--color-bg-mute)]"
+              className="rounded-full px-2.5 py-1 text-[11.5px] font-semibold text-[var(--color-text-soft)] hover:bg-[var(--color-bg-soft)]"
             >
               Cerrar
             </button>
             <button
               onClick={deleteSelectedHighlight}
-              className="rounded-md border border-red-500 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+              className="rounded-full border border-red-500 px-2.5 py-1 text-[11.5px] font-semibold text-red-500 hover:bg-red-500/10"
             >
               Eliminar
             </button>

@@ -4,10 +4,13 @@ import ePub, { type Book } from 'epubjs'
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist'
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
 import type { BookWithProgress } from '@shared/types'
+import { coverColorFor } from '@renderer/lib/bookCover'
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc
 
 const COVER_MAX_WIDTH = 300
+
+type LibraryFilter = 'all' | 'reading' | 'finished'
 
 async function resizeToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
   const bitmap = await createImageBitmap(new Blob([bytes.buffer as ArrayBuffer]))
@@ -107,6 +110,7 @@ export default function LibraryView(): React.JSX.Element {
   const [books, setBooks] = useState<BookWithProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [covers, setCovers] = useState<Record<string, string>>({})
+  const [filter, setFilter] = useState<LibraryFilter>('all')
 
   useEffect(() => {
     window.api.getBooks().then((result) => {
@@ -180,16 +184,67 @@ export default function LibraryView(): React.JSX.Element {
     }
   }
 
+  const readingCount = books.filter(
+    (b) => b.progress && b.progress.percentComplete > 0 && b.progress.percentComplete < 99
+  ).length
+
+  const filteredBooks = books.filter((book) => {
+    if (filter === 'all') return true
+    const pct = book.progress?.percentComplete ?? 0
+    if (filter === 'finished') return pct >= 99
+    return pct > 0 && pct < 99
+  })
+
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Mi biblioteca</h2>
-        <button
-          onClick={handleAddBooks}
-          className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm text-white"
-        >
-          Agregar libros
-        </button>
+      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="font-serif text-[32px] font-semibold tracking-tight">Tu biblioteca</h2>
+          <p className="mt-1.5 text-[13.5px] text-[var(--color-text-soft)]">
+            {books.length} {books.length === 1 ? 'libro' : 'libros'}
+            {readingCount > 0 && ` · ${readingCount} en progreso`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-soft)] p-[3px]">
+            {(
+              [
+                ['all', 'Todos'],
+                ['reading', 'Leyendo'],
+                ['finished', 'Terminados']
+              ] as [LibraryFilter, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setFilter(value)}
+                className={`rounded-full px-3.5 py-1.5 text-[12.5px] ${
+                  filter === value
+                    ? 'bg-[var(--color-bg-elevated)] font-semibold text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                    : 'font-medium text-[var(--color-text-soft)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handleAddBooks}
+            className="flex items-center gap-2 rounded-full bg-[var(--color-accent)] px-5 py-2.5 text-[13.5px] font-semibold text-white shadow-[var(--shadow-sm)]"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Agregar libros
+          </button>
+        </div>
       </div>
 
       {loading && <p className="text-[var(--color-text-soft)]">Cargando...</p>}
@@ -201,35 +256,68 @@ export default function LibraryView(): React.JSX.Element {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-        {books.map((book) => (
-          <Link
-            key={book.id}
-            to={`/reader/${book.id}`}
-            className="flex flex-col rounded-md border border-[var(--color-border)] p-3 hover:bg-[var(--color-bg-soft)]"
-          >
-            <div className="mb-2 flex h-40 items-center justify-center overflow-hidden rounded bg-[var(--color-bg-mute)] text-xs uppercase text-[var(--color-text-soft)]">
-              {covers[book.id] ? (
-                <img
-                  src={covers[book.id]}
-                  alt={book.title}
-                  className="h-full w-full object-contain"
-                />
-              ) : (
-                book.format
-              )}
-            </div>
-            <span className="truncate text-sm font-medium">{book.title}</span>
-            {book.author && (
-              <span className="truncate text-xs text-[var(--color-text-soft)]">{book.author}</span>
-            )}
-            {book.progress && (
-              <span className="text-xs text-[var(--color-text-soft)]">
-                {Math.round(book.progress.percentComplete)}%
-              </span>
-            )}
-          </Link>
-        ))}
+      {!loading && books.length > 0 && filteredBooks.length === 0 && (
+        <p className="text-[var(--color-text-soft)]">No hay libros en esta categoria.</p>
+      )}
+
+      <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {filteredBooks.map((book) => {
+          const pct = book.progress?.percentComplete ?? 0
+          return (
+            <Link key={book.id} to={`/reader/${book.id}`} className="flex flex-col gap-2.5">
+              <div className="relative aspect-[2/3] overflow-hidden rounded-[14px] shadow-[var(--shadow-sm)]">
+                {covers[book.id] ? (
+                  <img
+                    src={covers[book.id]}
+                    alt={book.title}
+                    className="h-full w-full bg-[var(--color-bg-mute)] object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex h-full w-full flex-col justify-end p-4"
+                    style={{ background: coverColorFor(book.id) }}
+                  >
+                    <div className="absolute inset-2.5 rounded-lg border border-white/30" />
+                    <span className="relative z-10 mb-2 text-[9px] font-bold uppercase tracking-[.12em] text-white/80">
+                      {book.format}
+                    </span>
+                    <div className="relative z-10 mt-auto">
+                      <div className="font-serif text-[17px] font-semibold leading-tight text-white/95">
+                        {book.title}
+                      </div>
+                      <div className="mt-2 h-px w-7 bg-white/30" />
+                      {book.author && (
+                        <div className="mt-2 text-[10.5px] text-white/80">{book.author}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="truncate text-[13.5px] font-semibold">{book.title}</div>
+                {book.author && (
+                  <div className="font-serif truncate text-xs italic text-[var(--color-text-soft)]">
+                    {book.author}
+                  </div>
+                )}
+                {pct >= 99 ? (
+                  <div className="mt-1.5 text-[11px] text-[var(--color-text-faint)]">Terminado</div>
+                ) : pct > 0 ? (
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--color-bg-mute)]">
+                    <div
+                      className="h-full bg-[var(--color-accent)]"
+                      style={{ width: `${Math.round(pct)}%` }}
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-1.5 text-[11px] text-[var(--color-text-faint)]">
+                    Sin empezar
+                  </div>
+                )}
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </div>
   )

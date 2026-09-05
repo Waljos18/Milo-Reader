@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CatalogBook } from '@shared/types'
+import { coverColorFor } from '@renderer/lib/bookCover'
 
 export default function CatalogView(): React.JSX.Element {
   const [query, setQuery] = useState('')
@@ -87,21 +88,31 @@ export default function CatalogView(): React.JSX.Element {
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-semibold">Catalogo (Project Gutenberg)</h2>
+      <h2 className="font-serif text-[32px] font-semibold tracking-tight">Catálogo</h2>
+      <p className="mt-1.5 mb-6 text-[13.5px] text-[var(--color-text-soft)]">
+        Miles de libros gratuitos de Project Gutenberg, listos para leer.
+      </p>
 
-      <form onSubmit={handleSubmit} className="mb-6 flex gap-2">
+      <form onSubmit={handleSubmit} className="relative mb-7 max-w-[480px]">
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--color-text-faint)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por titulo o autor..."
-          className="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm"
+          className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elevated)] py-3 pl-[42px] pr-4 text-[13.5px] shadow-[var(--shadow-sm)]"
         />
-        <button
-          type="submit"
-          className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm text-white"
-        >
-          Buscar
-        </button>
       </form>
 
       {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
@@ -111,66 +122,121 @@ export default function CatalogView(): React.JSX.Element {
         <p className="text-[var(--color-text-soft)]">Sin resultados.</p>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {books.map((book) => {
           const alreadyInLibrary =
             addedIds.has(book.gutenbergId) || libraryTitles.has(book.title.toLowerCase())
           const isDownloading = downloadingId === book.gutenbergId
 
           return (
-            <div
-              key={book.gutenbergId}
-              className="flex flex-col rounded-md border border-[var(--color-border)] p-3"
-            >
-              <div className="mb-2 flex h-40 items-center justify-center overflow-hidden rounded bg-[var(--color-bg-mute)] text-xs uppercase text-[var(--color-text-soft)]">
+            <div key={book.gutenbergId} className="flex flex-col">
+              <div className="relative aspect-[2/3] overflow-hidden rounded-[14px] shadow-[var(--shadow-sm)]">
                 {covers[book.gutenbergId] ? (
                   <img
                     src={covers[book.gutenbergId]}
                     alt={book.title}
-                    className="h-full w-full object-contain"
+                    className="h-full w-full bg-[var(--color-bg-mute)] object-cover"
                   />
                 ) : (
-                  'epub'
+                  <div
+                    className="flex h-full w-full flex-col justify-end p-4"
+                    style={{ background: coverColorFor(String(book.gutenbergId)) }}
+                  >
+                    <div className="absolute inset-2.5 rounded-lg border border-white/30" />
+                    <span className="relative z-10 mb-2 text-[9px] font-bold uppercase tracking-[.12em] text-white/80">
+                      EPUB
+                    </span>
+                    <div className="relative z-10 mt-auto">
+                      <div className="font-serif text-[17px] font-semibold leading-tight text-white/95">
+                        {book.title}
+                      </div>
+                      <div className="mt-2 h-px w-7 bg-white/30" />
+                      <div className="mt-2 text-[10.5px] text-white/80">
+                        {book.author ?? 'Autor desconocido'}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
-              <span className="truncate text-sm font-medium" title={book.title}>
+              <div className="mt-2.5 truncate text-[13px] font-semibold" title={book.title}>
                 {book.title}
-              </span>
-              <span className="truncate text-xs text-[var(--color-text-soft)]">
+              </div>
+              <div className="font-serif truncate text-[11.5px] italic text-[var(--color-text-soft)]">
                 {book.author ?? 'Autor desconocido'}
-              </span>
-              <button
-                onClick={() => handleDownload(book)}
-                disabled={alreadyInLibrary || isDownloading}
-                className="mt-2 rounded-md bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-50"
-              >
-                {alreadyInLibrary
-                  ? 'En tu biblioteca'
-                  : isDownloading
-                    ? 'Descargando...'
-                    : 'Agregar a biblioteca'}
-              </button>
+              </div>
+              {alreadyInLibrary ? (
+                <button
+                  disabled
+                  className="mt-2.5 flex items-center justify-center gap-1.5 rounded-full bg-[var(--color-accent-2-soft)] py-1.5 text-[11.5px] font-semibold text-[var(--color-accent-2)]"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                  En tu biblioteca
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleDownload(book)}
+                  disabled={isDownloading}
+                  className="mt-2.5 rounded-full border-[1.5px] border-[var(--color-accent)] py-1.5 text-[11.5px] font-semibold text-[var(--color-accent-hover)] disabled:opacity-50"
+                >
+                  {isDownloading ? 'Descargando...' : 'Agregar a biblioteca'}
+                </button>
+              )}
             </div>
           )
         })}
       </div>
 
       {books.length > 0 && (
-        <div className="mt-6 flex items-center justify-center gap-3">
+        <div className="mt-8 flex items-center justify-center gap-4">
           <button
             onClick={() => runSearch(page - 1)}
             disabled={!hasPrevious || loading}
-            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-4 py-2 text-[13px] font-medium disabled:opacity-40"
           >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
             Anterior
           </button>
-          <span className="text-sm text-[var(--color-text-soft)]">Pagina {page}</span>
+          <span className="text-[13px] text-[var(--color-text-soft)]">Página {page}</span>
           <button
             onClick={() => runSearch(page + 1)}
             disabled={!hasNext || loading}
-            className="rounded-md border border-[var(--color-border)] px-3 py-1 text-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elevated)] px-4 py-2 text-[13px] font-medium disabled:opacity-40"
           >
             Siguiente
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
           </button>
         </div>
       )}
